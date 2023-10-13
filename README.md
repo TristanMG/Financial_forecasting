@@ -1,7 +1,7 @@
 # Financial_forecasting
 Implementation of an ensemble machine learning method to predict the daily change of the closed price of a stock.
 
-Stock prices follow complex trajectories making them virtually impossible to predict. In their simplest model, they follow Brownian motion-like properties with MArkovian properties, i.e. the best guess of the price of tomorrow is the price of today.
+Stock prices follow complex trajectories making them virtually impossible to predict. In their simplest model, they follow Brownian motion-like properties with Markovian properties, i.e. the best guess of the price of tomorrow is the price of today.
 
 
 I implemented, and combined three different models to try to predict the evolution of a stock's price from one day to an other.

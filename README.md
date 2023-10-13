@@ -8,7 +8,7 @@ I implemented, and combined three different models to try to predict the evoluti
 
 The first and the simplest model is the assumption that the price remains constant from one day to the other. Its description is in stationary_model.py.
 
-The second model is a random forest model using [xgboos](https://github.com/dmlc/xgboost), using information about the date and the previous daily returns and exchange volumes.  Its description is in xgboost_model.py.
+The second model is a random forest model using [xgboost](https://github.com/dmlc/xgboost), using information about the date and the previous daily returns and exchange volumes.  Its description is in xgboost_model.py.
 
 The third model is a LSTM neural network using [keras](https://www.tensorflow.org/guide/keras), using information about the previous daily returns and exchange volumes.  Its description is in LSTM_model.py.
 

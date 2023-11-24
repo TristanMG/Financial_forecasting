@@ -13,86 +13,50 @@ from keras.models import Sequential
 from keras.layers import Dense
 from keras.callbacks import EarlyStopping
 from tensorflow.keras import layers
+from keras.optimizers import Adam
 import matplotlib.pyplot as plt
 from sklearn.metrics import mean_squared_error, mean_absolute_error
 
 import finance_functions as ff
 
-
-def create_features(df, label=None,lookBack=1):
+def model_LSTM(lookBack=1,NNN=10,N_layers=2,DO=0,lr=1e-2):
     """
-    (TO BE OPTIMISED)
-    Create the features to be used as inputs and outputs of the xgboost model
-
-    Parameters
-    ----------
-    df : pandas dataframe
-        dataset on which the model will be trained and tested on.
-    label : string, optional
-        Name of the colomn of the dataset that will be predicted by the model.
-        The default is None.
-    lookBack : int, optional
-        Number of days to lookback into. The default is 1.
-
-    Returns
-    -------
-    X : pandas dataframe
-        input of the model
-    y : pandas dataframe, optional
-        output of the model
-
-    """
-    
-    X=pd.DataFrame()
-    for i in range(len(df)-lookBack):
-        date=df.index[lookBack+i]
-        columns=[]
-        data=[]
-        for j in range(lookBack):
-            # For day you are looking back into, add the daily returns of the adjusted closed price and exchange volume
-            columns+=[f"DR-{j+1}",f"Volume -{j+1}"]
-            data.append(df['Adj Close'][lookBack+i-(j+1)])
-            data.append(df['Volume'][lookBack+i-(j+1)])
-        # print(columns,data)
-        temp=pd.DataFrame([data],columns=columns,index=[date])
-        
-        X=pd.concat([X,temp])
-        
-    if label:
-        y=df[label][lookBack:]
-        return X,y
-    return X
-
-
-
-def model_LSTM(look_back=1):
-    """
-    
     Function to build the neural network made of LSTM nodes 
+
     Parameters
     ----------
     lookBack : int, optional
         Number of days to lookback into. The default is 1.
+    NNN : int, optional
+        Number of nodes per layer. The default is 10.
+    N_layers : int, optional
+        Number of layers. The default is 2.
+    DO : float, optional
+        Dropout rate. The default is 0.
+    lr : float, optional
+        learning rate. The default is 1e-2.
 
     Returns
     -------
     model : keras.model
-       Neural network model
+       LSTM network model
 
     """
-    # Number of nodes per layer
-    NNN=10
-    #Fraction of dropouts
-    DO=0.3
-    model=Sequential([        
-        layers.LSTM(NNN,input_shape=(2*look_back, 1), return_sequences=True),
-        layers.Dropout(DO),        
-        layers.LSTM(NNN),
-        layers.Dropout(DO),       
-        layers.Dense(1,activation="linear"),
-        ])
-    model.compile(loss='mean_squared_error',  optimizer='adam',metrics = ['mse', 'mae'])
+    
+    model=Sequential([layers.LSTM(NNN,input_shape=(2*lookBack, 1), return_sequences=True,activation="tanh"),
+    layers.Dropout(DO)])
+    
+    for i in range(N_layers-2):
+        model.add(layers.LSTM(NNN, return_sequences=True,activation="tanh"))
+        model.add(layers.Dropout(DO))    
+    model.add(layers.LSTM(NNN,activation="tanh"))
+    model.add(layers.Dropout(DO))  
+    model.add(layers.Dense(1,activation="linear"))
+    
+    model.compile(loss='mean_squared_error',  optimizer=Adam(learning_rate=lr),metrics = ['mse', 'mae'])
     return model
+
+
 
 def model_loss(history):
     """
@@ -119,59 +83,60 @@ def model_loss(history):
     plt.show();
 
 
-def train(lookBack=1,stock="GOOG"):
+def train(folder="SP500",stock="GOOG",date_test_string="2014-12-31",date_validation_string="2018-12-31",lookBack=1,options=None):
     """
-    
-    Build and train the LSTM model
+    Build, train and save the LSTM model
 
     Parameters
     ----------
-    lookBack : int, optional
-        Number of days to lookback into.
-        The default is 1.
+    folder : string, optional
+        Folder in which the stock is. The default is "SP500_cleaned".
     stock : string, optional
-        stock name from those available in dataset/.
-        The default is "GOOG".
+        Name of the stock. The default is "GOOG".
+    options : dict, optional
+        Parameters of the ML architecture, learning process and shape of the input data.
+        The default is None.
 
     Returns
     -------
-    None
+    None.
 
     """
     
+    if options == None:
+        NNN=10
+        layers=2
+        dropout=0.2
+        learning_rate=0.01
+    else:
+        NNN=options["NNN"]
+        layers=options["layers"]
+        dropout=options["dropout"]
+        learning_rate=options["learning_rate"]
+    
+    date_test=pd.Timestamp(date_test_string)
+    date_validation=pd.Timestamp(date_validation_string)
+    
     # Load the data
-    df=pd.read_csv(f"dataset/{stock}.csv",index_col="Date",parse_dates=True,usecols=['Date','Adj Close','Volume'],na_values=['nan'])
-    df=df.dropna()
-    df=df[:]
+    X_train,y_train=ff.create_features(stock_l=[stock],market=folder,lookBack=lookBack,label="Adj Close",date_test=date_test,date_validation=date_validation,set_type="train")
+    X_test,y_test=ff.create_features(stock_l=[stock],market=folder,lookBack=lookBack,label="Adj Close",date_test=date_test,date_validation=date_validation,set_type="test")
     
-    NDays=len(df)
-    NTrain=int(0.8*NDays)
-    
-    # Compute the daily returns
-    df=ff.data_frame_daily_returns(df)
-    
-    #Create the features to train the model
-    X,y=create_features(df, label='Adj Close',lookBack=lookBack)
-    
-    #Split into training and testing sets
-    X_train=X[:NTrain].copy()
-    y_train=y[:NTrain].copy()
-    X_test=X[NTrain:].copy()
-    y_test=y[NTrain:].copy()
     
     # Create the model
-    model=model_LSTM(lookBack)
+    model=model_LSTM(lookBack=lookBack,NNN=NNN,N_layers=layers,DO=dropout,lr=learning_rate)
     
     #Training parameters
-    early_stopping = EarlyStopping(
-        min_delta=0.0000001, # minimium amount of change to count as an improvement
-        patience=20, # how many epochs to wait before stopping
-        restore_best_weights=True,
-    )
+    # early_stopping = EarlyStopping(
+    #     min_delta=0.0000001, # minimium amount of change to count as an improvement
+    #     patience=20, # how many epochs to wait before stopping
+    #     restore_best_weights=True,
+    # )
     
+    stop_early = EarlyStopping(monitor='val_loss', patience=20,min_delta=0.0000001,restore_best_weights=True)
     
     # Train the model
-    history=model.fit(X_train,y_train, epochs=1000, batch_size=4000,verbose=0, validation_data=(X_test,y_test),callbacks=[early_stopping],shuffle=True)
+    # history=model.fit(X_train,y_train, epochs=1000, batch_size=4000,verbose=0, validation_data=(X_test,y_test),callbacks=[early_stopping],shuffle=True)
+    history=model.fit(X_train,y_train, epochs=60, batch_size=200000,verbose=0, validation_data=(X_test,y_test), callbacks=[stop_early])
     
     # model_loss(history)
     
@@ -181,5 +146,8 @@ def train(lookBack=1,stock="GOOG"):
     # print("MAE: ",mean_absolute_error(y_test.to_numpy(), y_predict))
     
     #Save the model
-    model.save(f"dataset/model_{stock}_lookback_{lookBack}_LSTM.keras")
+    if stock == "all":
+        model.save(f"{folder}_prediction/model_{stock}_LSTM_lookback_{lookBack}_date_{date_test_string}.keras")
+    else:
+        model.save(f"{folder}_prediction/{stock}_LSTM_lookback_{lookBack}_date_{date_test_string}.keras")
 
